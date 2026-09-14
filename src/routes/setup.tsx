@@ -1,0 +1,20 @@
+import { Gamepad2, Play, RotateCcw } from "lucide-react"
+import { useNavigate } from "react-router"
+
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { useUiStore } from "@/stores/ui-store"
+
+export function SetupPage() {
+  const navigate = useNavigate()
+  const { seed, isCenterTowerDisabled, robotSetups, setSeed, setCenterTowerDisabled, updateRobotSetup } = useUiStore()
+  return <section className="space-y-6">
+    <div className="space-y-2"><p className="text-sm font-medium text-muted-foreground">Match setup</p><h1 className="text-3xl font-semibold tracking-tight">Cone Zone simulator</h1><p className="max-w-2xl text-muted-foreground">Assign up to four standard Xbox controllers, tune each robot, then begin a local 2:30 match. Unassigned robots remain physical obstacles.</p></div>
+    <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4"><div className="grid gap-2"><Label htmlFor="seed">Match seed</Label><Input className="w-36" id="seed" onChange={(event) => setSeed(Number(event.target.value) || 0)} type="number" value={seed} /></div><Button onClick={() => setSeed(Math.floor(Math.random() * 2_000_000_000))} variant="outline"><RotateCcw /> Randomize</Button><Label className="flex items-center gap-2 text-sm"><Checkbox checked={isCenterTowerDisabled} onCheckedChange={(checked) => setCenterTowerDisabled(checked === true)} /> Disable center tower and random scoring</Label><Button className="ml-auto" onClick={() => navigate("/simulator")}><Play /> Start match</Button></div>
+    <div className="grid gap-4 lg:grid-cols-2">{robotSetups.map((setup, id) => <article className="space-y-4 rounded-xl border bg-card p-5" key={id}><div className="flex items-center justify-between"><div><h2 className="font-semibold">{id < 2 ? "Red" : "Blue"} robot {id % 2 + 1}</h2><p className="text-sm text-muted-foreground">30 in square swerve robot</p></div><Gamepad2 className={setup.controllerIndex !== null ? "text-primary" : "text-muted-foreground"} /></div><div className="grid gap-3 sm:grid-cols-2"><NumberField label="Controller slot (1–4)" max={4} min={1} value={setup.controllerIndex === null ? "" : setup.controllerIndex + 1} onChange={(value) => updateRobotSetup(id, { controllerIndex: value === "" ? null : Number(value) - 1 })} /><NumberField label="Speed (ft/s)" max={20} min={4} step={1} value={setup.translationSpeed} onChange={(value) => updateRobotSetup(id, { translationSpeed: Number(value) })} /><NumberField label="Rotation (°/s)" max={720} min={90} step={30} value={setup.rotationSpeed} onChange={(value) => updateRobotSetup(id, { rotationSpeed: Number(value) })} /><NumberField label="Intake seconds" max={3} min={0.1} step={0.1} value={setup.intakeSeconds} onChange={(value) => updateRobotSetup(id, { intakeSeconds: Number(value) })} /><NumberField label="Score seconds" max={3} min={0.1} step={0.1} value={setup.scoreSeconds} onChange={(value) => updateRobotSetup(id, { scoreSeconds: Number(value) })} /></div><Label className="flex items-center gap-2 text-sm"><Checkbox checked={setup.keyboard} onCheckedChange={(checked) => updateRobotSetup(id, { keyboard: checked === true })} /> Keyboard fallback (WASD translate, Q/E rotate, F intake, G score)</Label></article>)}</div>
+    <p className="text-sm text-muted-foreground">Controls: left stick translates, right stick rotates, LT intakes, RT scores, A aligns to the nearest tower, and Y requests your alliance’s bonus bunny at the nearest human-player station.</p>
+  </section>
+}
+function NumberField({ label, value, onChange, ...props }: { label: string; value: string | number; onChange: (value: string) => void } & React.ComponentProps<typeof Input>) { const id = label.replaceAll(/[^a-z]/gi, "-").toLowerCase(); return <div className="grid gap-2"><Label htmlFor={id}>{label}</Label><Input id={id} onChange={(event) => onChange(event.target.value)} type="number" value={value} {...props} /></div> }
