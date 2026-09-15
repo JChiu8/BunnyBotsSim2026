@@ -53,9 +53,11 @@ export const saveResult = mutation({
     configuration: v.string(),
     events: v.array(v.object({ atSeconds: v.number(), kind: v.string(), detail: v.string() })),
   },
-  returns: v.id("matchResults"),
+  returns: v.union(v.null(), v.id("matchResults")),
   handler: async (ctx, args) => {
-    const identity = await identityOrThrow(ctx)
+    // The simulator is available without an account; only persist history when signed in.
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) return null
     const matchId = await ctx.db.insert("matchResults", {
       tokenIdentifier: identity.tokenIdentifier,
       seed: args.seed,

@@ -147,7 +147,7 @@ export class SimulatorEngine {
     const dx = target.position.x - robot.body.position.x; const dy = target.position.y - robot.body.position.y
     const dist = Math.hypot(dx, dy); const angle = Math.atan2(dy, dx)
     const headingDiff = normalize(target.heading - robot.body.angle)
-    return { x: dist > 2 ? Math.cos(angle) * 0.55 : 0, y: dist > 2 ? Math.sin(angle) * 0.55 : 0, rotation: Math.max(-1, Math.min(1, headingDiff / 0.8)), intake: robot.input.intake, score: robot.input.score, align: true, bunny: robot.input.bunny }
+    return { x: dist > 2 ? Math.cos(angle) * 0.55 : 0, y: dist > 2 ? Math.sin(angle) * 0.55 : 0, rotation: Math.max(-1, Math.min(1, headingDiff / 0.95)), intake: robot.input.intake, score: robot.input.score, align: true, bunny: robot.input.bunny }
   }
 
   private nearestCone(robot: RobotRuntime) {
@@ -192,13 +192,30 @@ export class SimulatorEngine {
   }
   private robotResistance(robot: RobotRuntime, velocity: Matter.Vector) {
     if (Vector.magnitudeSquared(velocity) === 0) return 1
-    const isDrivingIntoRobot = this.robots.some((other) => {
-      if (other.id === robot.id || !Collision.collides(robot.body, other.body)) return false
-      const towardOther = Vector.sub(other.body.position, robot.body.position)
-      return Vector.dot(velocity, towardOther) > 0
-    })
+    const isDrivingToward = (body: Matter.Body) => {
+      const towardBody = Vector.sub(body.position, robot.body.position)
+      // Require a mostly head-on interaction; side-by-side scraping is not a push.
+      return Vector.dot(Vector.normalise(velocity), Vector.normalise(towardBody)) >= 0.8
+    }
+    const isDrivingIntoRobot = this.robots.some((other) => other.id !== robot.id && Collision.collides(robot.body, other.body) && isDrivingToward(other.body))
+    const cones = this.freeCones()
+    const pushedCones = cones.filter(({ body }) => Collision.collides(robot.body, body) && isDrivingToward(body))
+    // Walk the entire touching-cone pile, so several cones between robots cannot
+    // bypass the robot-to-robot drivetrain limit.
+    const connectedConeBodies = new Set(pushedCones.map(({ body }) => body))
+    const pendingConeBodies = [...connectedConeBodies]
+    let isPushingRobotThroughCones = false
+    while (pendingConeBodies.length > 0 && !isPushingRobotThroughCones) {
+      const coneBody = pendingConeBodies.pop()!
+      isPushingRobotThroughCones = this.robots.some((other) => other.id !== robot.id && Collision.collides(coneBody, other.body) && isDrivingToward(other.body))
+      for (const { body } of cones) {
+        if (!connectedConeBodies.has(body) && Collision.collides(coneBody, body)) { connectedConeBodies.add(body); pendingConeBodies.push(body) }
+      }
+    }
     // This is a deliberate drivetrain limit rather than a bounce: pushing robots becomes slow.
-    return isDrivingIntoRobot ? 0.12 : 1
+    if (isDrivingIntoRobot || isPushingRobotThroughCones) return 0.12
+    // Cones provide noticeable but lighter resistance when they are not braced against another robot.
+    return pushedCones.length > 0 ? 0.7 : 1
   }
   private approaches(tower: Tower): TowerApproach[] {
     return [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }].map((normal) => ({
@@ -233,7 +250,8 @@ export class SimulatorEngine {
   private seededAlliance(at: number): Alliance { return random(this.seed ^ Math.floor(at * 997))() < 0.5 ? "red" : "blue" }
   private freeCones() { return [...this.cones.values()].filter((entry) => entry.cone.heldBy === null) }
   private createConeBody(cone: Cone, x: number, y: number) {
-    const body = Bodies.circle(x, y, cone.radius, { frictionAir: 0.07, restitution: 0.15, label: "cone" })
+    // Cones should resist being bulldozed while still remaining movable enough for play.
+    const body = Bodies.circle(x, y, cone.radius, { density: 0.3, friction: 1, frictionStatic: 50, frictionAir: 0.2, restitution: 0, label: "cone" })
     body.plugin.meta = { kind: "cone", coneId: cone.id } satisfies BodyMeta
     return body
   }

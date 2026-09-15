@@ -16,7 +16,7 @@ export type RobotSnapshot = { id: number; alliance: Alliance; x: number; y: numb
 export type SimEvent = { atSeconds: number; kind: string; detail: string }
 export type Snapshot = { phase: Phase; remaining: number; redScore: number; blueScore: number; towers: Tower[]; cones: Cone[]; robots: RobotSnapshot[]; paused: boolean; ended: boolean; events: SimEvent[]; finalBreakdown: ScoreBreakdown | null }
 export type ScoreBreakdown = { red: ScoreParts; blue: ScoreParts }
-export type ScoreParts = { auto: number; cones: number; runs: number; tictactoes: number; total: number }
+export type ScoreParts = { auto: number; cones: number; runs: number; tictactoes: number; bunnies: number; total: number }
 export type DriverInput = { x: number; y: number; rotation: number; intake: boolean; score: boolean; align: boolean; bunny: boolean }
 
 export const DEFAULT_CONFIG: RobotConfig = { translationSpeed: 12, rotationSpeed: 360, intakeSeconds: 0.5, scoreSeconds: 0.75 }

@@ -16,12 +16,14 @@ function control(tower: Tower): Alliance | null {
 }
 
 export function scoreTowers(towers: Tower[], autoPoints: Record<Alliance, number>): ScoreBreakdown {
-  const scores = { red: { auto: autoPoints.red, cones: 0, runs: 0, tictactoes: 0, total: 0 }, blue: { auto: autoPoints.blue, cones: 0, runs: 0, tictactoes: 0, total: 0 } }
+  const scores = { red: { auto: autoPoints.red, cones: 0, runs: 0, tictactoes: 0, bunnies: 0, total: 0 }, blue: { auto: autoPoints.blue, cones: 0, runs: 0, tictactoes: 0, bunnies: 0, total: 0 } }
   const byId = new Map(towers.map((tower) => [tower.id, tower]))
   for (const tower of towers) {
-    const multiplier = hasBunny(tower) ? 2 : 1
+    const bunnyBonus = hasBunny(tower)
     for (const alliance of ["red", "blue"] as const) {
-      scores[alliance].cones += tower.stack.filter((cone) => cone === alliance).length * multiplier
+      const coneCount = tower.stack.filter((cone) => cone === alliance).length
+      scores[alliance].cones += coneCount
+      if (bunnyBonus) scores[alliance].bunnies += coneCount
       let consecutive = 0
       let runs = 0
       for (const cone of tower.stack) {
@@ -31,17 +33,23 @@ export function scoreTowers(towers: Tower[], autoPoints: Record<Alliance, number
           if (consecutive === 3) { runs++; consecutive = 0 }
         } else if (cone !== "white") consecutive = 0
       }
-      scores[alliance].runs += Math.min(2, runs) * 5 * multiplier
+      scores[alliance].runs += runs * 5
+      // A bonus bunny doubles only the first two vertical runs. Additional
+      // runs still score their normal five points each.
+      if (bunnyBonus) scores[alliance].bunnies += Math.min(2, runs) * 5
     }
   }
   for (const ids of LINES) {
     const line = ids.map((id) => byId.get(id)!).filter(Boolean)
     const owner = control(line[0])
-    if (owner && line.every((tower) => control(tower) === owner)) scores[owner].tictactoes += line.some(hasBunny) ? 40 : 20
+    if (owner && line.every((tower) => control(tower) === owner)) {
+      scores[owner].tictactoes += 20
+      if (line.some(hasBunny)) scores[owner].bunnies += 20
+    }
   }
   for (const alliance of ["red", "blue"] as const) {
     const score = scores[alliance]
-    score.total = score.auto + score.cones + score.runs + score.tictactoes
+    score.total = score.auto + score.cones + score.runs + score.tictactoes + score.bunnies
   }
   return scores
 }
