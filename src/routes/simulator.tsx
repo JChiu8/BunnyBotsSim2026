@@ -6,6 +6,7 @@ import { useNavigate } from "react-router"
 import { Button } from "@/components/ui/button"
 import { FieldCanvas } from "@/sim/field-canvas"
 import { SimulatorEngine } from "@/sim/engine"
+import { gamepadForPort } from "@/sim/gamepads"
 import type { DriverInput, ScoreBreakdown, ScoreParts, Snapshot } from "@/sim/types"
 import { api } from "../../convex/_generated/api"
 import { useUiStore } from "@/stores/ui-store"
@@ -88,9 +89,8 @@ function ScoreColumn({ alliance, score }: { alliance: "red" | "blue"; score: Sco
   return <div className="min-w-0"><div className={`px-3 py-2 text-center text-sm font-black uppercase tracking-[0.2em] text-white ${alliance === "red" ? "bg-red-600" : "bg-blue-600"}`}>{alliance}</div><dl className="divide-y-2 divide-slate-950 text-sm sm:text-base">{rows.map(([label, value]) => <div className="flex items-center justify-between gap-2 px-3 py-2" key={label as string}><dt className="font-semibold">{label}</dt><dd className="font-mono text-lg font-black tabular-nums">{value}</dd></div>)}</dl></div>
 }
 function applyInputs(engine: SimulatorEngine, setups: ReturnType<typeof useUiStore.getState>["robotSetups"], keys: Set<string>) {
-  const gamepads = navigator.getGamepads?.() ?? []
   for (let id = 0; id < 4; id++) {
-    const setup = setups[id]; const gamepad = setup.controllerIndex === null ? null : gamepads[setup.controllerIndex]
+    const setup = setups[id]; const gamepad = setup.controllerIndex === null ? null : gamepadForPort(setup.controllerIndex)
     const input = emptyInput()
     if (gamepad) { input.x = gamepad.axes[0] ?? 0; input.y = gamepad.axes[1] ?? 0; input.rotation = gamepad.axes[2] ?? 0; input.intake = (gamepad.buttons[6]?.value ?? 0) > 0.2; input.score = (gamepad.buttons[7]?.value ?? 0) > 0.2; input.align = gamepad.buttons[0]?.pressed ?? false; input.bunny = gamepad.buttons[3]?.pressed ?? false }
     if (setup.keyboard) { input.x += (keys.has("d") ? 1 : 0) - (keys.has("a") ? 1 : 0); input.y += (keys.has("s") ? 1 : 0) - (keys.has("w") ? 1 : 0); input.rotation += (keys.has("e") ? 1 : 0) - (keys.has("q") ? 1 : 0); input.intake ||= keys.has("f"); input.score ||= keys.has("g"); input.align ||= keys.has("r"); input.bunny ||= keys.has("t") }

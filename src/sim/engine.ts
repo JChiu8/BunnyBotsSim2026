@@ -1,7 +1,7 @@
 import Matter from "matter-js"
 
 import { scoreTowers } from "@/sim/scoring"
-import { DEFAULT_CONFIG, FIELD, type Alliance, type Cone, type DriverInput, type RobotSetup, type Snapshot, type Tower } from "@/sim/types"
+import { DEFAULT_CONFIG, FIELD, MAX_STACK_HEIGHT, type Alliance, type Cone, type DriverInput, type RobotSetup, type Snapshot, type Tower } from "@/sim/types"
 
 const { Bodies, Body, Collision, Composite, Engine, Vector } = Matter
 const PHYSICS_TICKS_PER_SECOND = 60
@@ -26,7 +26,7 @@ function random(seed: number) {
 
 export class SimulatorEngine {
   readonly engine = Engine.create({ gravity: { x: 0, y: 0, scale: 0 } })
-  readonly towers: Tower[] = towerPositions.map(([id, x, y]) => ({ id, x, y, stack: [], scoreable: id !== "center" }))
+  readonly towers: Tower[] = towerPositions.map(([id, x, y]) => ({ id, x, y, stack: [], stackedBy: [], scoreable: id !== "center" }))
   readonly robots: RobotRuntime[] = Array.from({ length: 4 }, (_, id) => ({ id, alliance: id < 2 ? "red" : "blue", body: Bodies.rectangle(id < 2 ? 235 : 413, id % 2 ? 215 : 109, FIELD.robotSize, FIELD.robotSize, { density: 0.1, friction: 1, frictionStatic: 100, restitution: 0, label: "robot" }), held: null, action: "idle", actionProgress: 0, actionTargetId: null, input: emptyInput(), driveVelocity: { x: 0, y: 0 }, mobility: false, bunnyHeld: false }))
   readonly cones = new Map<string, ConeEntry>()
   readonly autoPoints: Record<Alliance, number> = { red: 0, blue: 0 }
@@ -155,7 +155,7 @@ export class SimulatorEngine {
     return this.freeCones().filter((entry) => distance(robot.body.position, entry.body.position) < 32).sort((a, b) => distance(robot.body.position, a.body.position) - distance(robot.body.position, b.body.position))[0] ?? null
   }
   private nearestScoreTower(robot: RobotRuntime) {
-    return this.towers.filter((tower) => tower.scoreable).map((tower) => this.closestApproach(robot.body.position, tower)).find((approach) => this.isAlignedForScore(robot, approach))?.tower ?? null
+    return this.towers.filter((tower) => tower.scoreable && this.robotStackHeight(robot.id, tower) < this.robotMaxStackHeight(robot.id)).map((tower) => this.closestApproach(robot.body.position, tower)).find((approach) => this.isAlignedForScore(robot, approach))?.tower ?? null
   }
   private intake(robot: RobotRuntime, entry: ConeEntry) {
     entry.cone.x = entry.body.position.x; entry.cone.y = entry.body.position.y
@@ -163,7 +163,7 @@ export class SimulatorEngine {
     Composite.remove(this.engine.world, entry.body)
     this.record("intake", `${robot.alliance} robot ${robot.id + 1} picked up ${entry.cone.alliance}`)
   }
-  private score(robot: RobotRuntime, tower: Tower, phase: "auto" | "teleop") { const cone = robot.held!; tower.stack.push(cone.alliance); if (phase === "auto") this.autoPoints[robot.alliance] += 5; this.cones.delete(cone.id); robot.held = null; this.record("score", `${robot.alliance} robot ${robot.id + 1} scored ${cone.alliance} on ${tower.id}`) }
+  private score(robot: RobotRuntime, tower: Tower, phase: "auto" | "teleop") { if (this.robotStackHeight(robot.id, tower) >= this.robotMaxStackHeight(robot.id)) return; const cone = robot.held!; tower.stack.push(cone.alliance); tower.stackedBy.push(robot.id); if (phase === "auto") this.autoPoints[robot.alliance] += 5; this.cones.delete(cone.id); robot.held = null; this.record("score", `${robot.alliance} robot ${robot.id + 1} scored ${cone.alliance} on ${tower.id}`) }
   private release(robot: RobotRuntime) {
     const cone = robot.held!
     const position = this.heldPosition(robot)
@@ -246,7 +246,9 @@ export class SimulatorEngine {
     if (side === 2) return { x: FIELD.centerX + half - offset, y: FIELD.centerY + half }
     return { x: FIELD.centerX - half, y: FIELD.centerY + half - offset }
   }
-  private addToTower(id: string, alliance: Alliance, event: string) { const tower = this.towers.find((candidate) => candidate.id === id)!; tower.stack.push(alliance); this.record(event, `${alliance} cone added to ${id}`) }
+  private addToTower(id: string, alliance: Alliance, event: string) { const tower = this.towers.find((candidate) => candidate.id === id)!; tower.stack.push(alliance); tower.stackedBy.push(null); this.record(event, `${alliance} cone added to ${id}`) }
+  private robotMaxStackHeight(robotId: number) { return Math.min(MAX_STACK_HEIGHT, Math.max(1, Math.round(this.setups[robotId]?.maxStackHeight ?? DEFAULT_CONFIG.maxStackHeight))) }
+  private robotStackHeight(robotId: number, tower: Tower) { return tower.stackedBy.filter((owner) => owner === robotId).length }
   private seededAlliance(at: number): Alliance { return random(this.seed ^ Math.floor(at * 997))() < 0.5 ? "red" : "blue" }
   private freeCones() { return [...this.cones.values()].filter((entry) => entry.cone.heldBy === null) }
   private createConeBody(cone: Cone, x: number, y: number) {
@@ -257,9 +259,9 @@ export class SimulatorEngine {
   }
   private spawnCone(alliance: Alliance | "white", x: number, y: number) { const cone: Cone = { id: `cone-${this.nextCone++}`, alliance, x, y, radius: alliance === "white" ? 6 : 5.25, heldBy: null }; const body = this.createConeBody(cone, x, y); this.cones.set(cone.id, { cone, body }); Composite.add(this.engine.world, body) }
   snapshot(): Snapshot {
-    const towers = this.towers.map((tower) => ({ ...tower, stack: [...tower.stack] }))
+    const towers = this.towers.map((tower) => ({ ...tower, stack: [...tower.stack], stackedBy: [...tower.stackedBy] }))
     const cones = this.freeCones().map(({ cone, body }) => ({ ...cone, x: body.position.x, y: body.position.y }))
-    const robots = this.robots.map((robot) => ({ id: robot.id, alliance: robot.alliance, x: robot.body.position.x, y: robot.body.position.y, angle: robot.body.angle, held: robot.held?.alliance ?? null, action: robot.action, progress: robot.actionProgress, active: this.setups[robot.id]?.controllerIndex !== null || this.setups[robot.id]?.keyboard }))
+    const robots = this.robots.map((robot) => ({ id: robot.id, alliance: robot.alliance, x: robot.body.position.x, y: robot.body.position.y, angle: robot.body.angle, held: robot.held?.alliance ?? null, action: robot.action, progress: robot.actionProgress, active: this.setups[robot.id]?.controllerIndex !== null || this.setups[robot.id]?.keyboard, maxStackHeight: this.robotMaxStackHeight(robot.id) }))
     const breakdown = this.ended ? scoreTowers(towers, this.autoPoints) : null
     const live = breakdown ?? scoreTowers(towers, this.autoPoints)
     return { phase: this.elapsed < 15 ? "auto" : this.ended ? "final" : "teleop", remaining: Math.max(0, 150 - this.elapsed), redScore: live.red.total, blueScore: live.blue.total, towers, cones, robots, paused: this.paused, ended: this.ended, events: [...this.events], finalBreakdown: breakdown }

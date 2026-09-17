@@ -64,6 +64,7 @@ function drawTower(context: CanvasRenderingContext2D, tower: Tower) {
   context.strokeStyle = bunny ? "#f8fafc" : "#111827"; context.lineWidth = bunny ? 3 : 1; context.strokeRect(tower.x - 8, tower.y - 8, 16, 16)
   if (top) { context.fillStyle = colors[top]; context.beginPath(); context.arc(tower.x, tower.y, 5, 0, Math.PI * 2); context.fill() }
   if (topRun > 1) { context.fillStyle = "white"; context.font = "bold 8px sans-serif"; context.textAlign = "center"; context.fillText(`x${topRun}`, tower.x, tower.y - 11) }
+  context.fillStyle = "#f8fafc"; context.font = "bold 8px sans-serif"; context.textAlign = "center"; context.fillText(`H ${tower.stack.length}`, tower.x, tower.y + 19)
 }
 function consecutiveTopRun(stack: Tower["stack"], color: Alliance) { let count = 0; for (const cone of [...stack].reverse()) { if (cone === "white") continue; if (cone !== color) break; count++ } return count }
 function drawCone(context: CanvasRenderingContext2D, x: number, y: number, radius: number, color: Alliance | "white") { context.fillStyle = colors[color]; context.strokeStyle = color === "white" ? "#64748b" : "#0f172a"; context.lineWidth = 1; context.beginPath(); context.moveTo(x, y - radius); context.lineTo(x + radius, y + radius); context.lineTo(x - radius, y + radius); context.closePath(); context.fill(); context.stroke() }
